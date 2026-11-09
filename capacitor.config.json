@@ -1,0 +1,16 @@
+{
+  "appId": "com.baselauncher.mobile",
+  "appName": "Base Launcher",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#0a0716",
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0a0716",
+      "overlaysWebView": false
+    }
+  }
+}

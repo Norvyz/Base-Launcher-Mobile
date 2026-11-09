@@ -1,0 +1,104 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Compilar y firmar APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Compilar interfaz
+        run: npm run build
+
+      - name: Sincronizar Capacitor
+        run: npx cap sync android
+
+      - name: Preparar keystore
+        id: keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "Keystore de release listo."
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Sin KEYSTORE_B64: el APK se firmará con la clave de depuración."
+          fi
+
+      - name: Exigir firma en etiquetas
+        if: startsWith(github.ref, 'refs/tags/v') && steps.keystore.outputs.signed != 'true'
+        run: |
+          echo "::error::La etiqueta $GITHUB_REF_NAME necesita los secretos del keystore para publicar un APK actualizable."
+          exit 1
+
+      - name: Compilar APK release
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          VERSION_CODE: ${{ github.run_number }}
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Renombrar APK
+        id: apk
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          NAME="BaseLauncher-Mobile-${VERSION}.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          ls -lh "$NAME"
+
+      - name: Guardar artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: ${{ steps.apk.outputs.name }}
+          if-no-files-found: error
+
+      - name: Publicar release
+        if: startsWith(github.ref, 'refs/tags/v') && steps.keystore.outputs.signed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Base Launcher Mobile ${{ github.ref_name }}
+          files: ${{ steps.apk.outputs.name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true

@@ -1,0 +1,24 @@
+node_modules
+dist
+.DS_Store
+*.log
+
+# Android / Gradle
+android/.gradle
+android/build
+android/app/build
+android/local.properties
+android/app/release
+android/.idea
+*.iml
+
+# Firmas: nunca subir al repositorio
+*.jks
+*.keystore
+keystore
+keystore-info.txt
+*.b64
+
+# Variables de entorno
+.env
+.env.*
